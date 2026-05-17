@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ScenarioResult } from '../types';
-import { Currency, formatCompactCurrency } from '../lib/format';
+import { Currency, formatCurrency } from '../lib/format';
 
 interface Props {
   hold: ScenarioResult;
@@ -44,23 +44,23 @@ export function ResultTable({ hold, sell, currency, fxRate, showSell }: Props) {
                   <tr key={y.year} className="border-t border-slate-100">
                     <td className="py-1 pr-3 text-slate-500">Y{y.year}</td>
                     <td className="text-right py-1 pr-3">
-                      {formatCompactCurrency(y.portfolioValue, currency, fxRate)}
+                      {formatCurrency(y.portfolioValue, currency, fxRate)}
                     </td>
                     {showSell && (
                       <td className="text-right py-1 pr-3">
-                        {formatCompactCurrency(s.portfolioValue, currency, fxRate)}
+                        {formatCurrency(s.portfolioValue, currency, fxRate)}
                       </td>
                     )}
                     {showSell && (
                       <td className="text-right py-1 pr-3 text-slate-500">
                         {s.cashOutsideNisa > 0
-                          ? formatCompactCurrency(s.cashOutsideNisa, currency, fxRate)
+                          ? formatCurrency(s.cashOutsideNisa, currency, fxRate)
                           : '—'}
                       </td>
                     )}
                     {showSell && (
                       <td className="text-right py-1 pr-3">
-                        {formatCompactCurrency(
+                        {formatCurrency(
                           s.portfolioValue + s.cashOutsideNisa,
                           currency,
                           fxRate,

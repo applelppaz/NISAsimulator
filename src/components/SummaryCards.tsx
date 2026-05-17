@@ -1,5 +1,5 @@
 import { ScenarioResult } from '../types';
-import { Currency, formatCompactCurrency, formatPercent } from '../lib/format';
+import { Currency, formatCurrency, formatPercent } from '../lib/format';
 
 interface Props {
   hold: ScenarioResult;
@@ -57,17 +57,17 @@ function ScenarioCard({ title, accent, result, currency, fxRate, delta }: CardPr
       <div className="space-y-3">
         <Stat
           label="Final total value"
-          value={formatCompactCurrency(result.finalTotalValue, currency, fxRate)}
+          value={formatCurrency(result.finalTotalValue, currency, fxRate)}
           emphasis
         />
         <div className="grid grid-cols-2 gap-3 text-sm">
           <Stat
             label="Total contributed"
-            value={formatCompactCurrency(result.totalContributed, currency, fxRate)}
+            value={formatCurrency(result.totalContributed, currency, fxRate)}
           />
           <Stat
             label="Total gain"
-            value={formatCompactCurrency(result.totalGain, currency, fxRate)}
+            value={formatCurrency(result.totalGain, currency, fxRate)}
             sub={formatPercent(gainPct)}
             positive={result.totalGain >= 0}
           />
@@ -79,7 +79,7 @@ function ScenarioCard({ title, accent, result, currency, fxRate, delta }: CardPr
             }`}
           >
             {delta >= 0 ? '+' : ''}
-            {formatCompactCurrency(delta, currency, fxRate)} vs Scenario A
+            {formatCurrency(delta, currency, fxRate)} vs Scenario A
           </div>
         )}
       </div>
