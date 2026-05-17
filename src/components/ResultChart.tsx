@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ScenarioResult } from '../types';
-import { Currency, formatCompactCurrency } from '../lib/format';
+import { Currency, formatCurrency } from '../lib/format';
 
 interface Props {
   hold: ScenarioResult;
@@ -67,7 +67,7 @@ export function ResultChart({ hold, sell, currency, fxRate, yearOfSale, showSell
             <YAxis tickFormatter={yTickFormatter} stroke="#94a3b8" fontSize={12} width={70} />
             <Tooltip
               formatter={(value: number, name: string) => [
-                formatCompactCurrency(
+                formatCurrency(
                   currency === 'JPY' ? value : value * fxRate,
                   currency,
                   fxRate,

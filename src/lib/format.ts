@@ -10,20 +10,6 @@ export function formatCurrency(amountJpy: number, currency: Currency, fxRate: nu
   return `${symbol}${formatted}`;
 }
 
-export function formatCompactCurrency(
-  amountJpy: number,
-  currency: Currency,
-  fxRate: number,
-): string {
-  const value = currency === 'JPY' ? amountJpy : amountJpy / Math.max(fxRate, 0.0001);
-  const symbol = currency === 'JPY' ? '¥' : '$';
-  const formatted = new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-    maximumFractionDigits: 2,
-  }).format(value);
-  return `${symbol}${formatted}`;
-}
-
 export function formatPercent(pct: number, digits = 1): string {
   return `${pct.toFixed(digits)}%`;
 }
