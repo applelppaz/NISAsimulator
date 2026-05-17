@@ -175,24 +175,40 @@ function NumberField({ label, unit, value, hint, warning, onChange }: NumberFiel
         <span className="text-sm font-medium text-slate-700">{label}</span>
         <span className="text-xs text-slate-500">{unit}</span>
       </div>
-      <input
-        type="text"
-        inputMode="decimal"
-        className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm tabular-nums"
-        value={text}
-        onChange={(e) => {
-          const next = e.target.value;
-          setText(next);
-          if (next === '' || next === '-') return;
-          const n = Number(next);
-          if (Number.isFinite(n)) onChange(n);
-        }}
-        onBlur={() => {
-          const n = Number(text);
-          if (text === '' || !Number.isFinite(n)) setText(formatForInput(value));
-          else setText(formatForInput(n));
-        }}
-      />
+      <div className="relative">
+        <input
+          type="text"
+          inputMode="decimal"
+          className="w-full pl-3 pr-9 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm tabular-nums"
+          value={text}
+          onChange={(e) => {
+            const next = e.target.value;
+            setText(next);
+            if (next === '' || next === '-') return;
+            const n = Number(next);
+            if (Number.isFinite(n)) onChange(n);
+          }}
+          onBlur={() => {
+            const n = Number(text);
+            if (text === '' || !Number.isFinite(n)) setText(formatForInput(value));
+            else setText(formatForInput(n));
+          }}
+        />
+        {text !== '' && (
+          <button
+            type="button"
+            aria-label="Clear"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setText('');
+              onChange(0);
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-300 hover:bg-slate-400 text-white text-xs flex items-center justify-center leading-none"
+          >
+            ×
+          </button>
+        )}
+      </div>
       {hint && !warning && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       {warning && <p className="mt-1 text-xs text-amber-600">{warning}</p>}
     </label>
