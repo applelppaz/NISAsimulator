@@ -11,17 +11,15 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
   const {
     currentPortfolioValue,
     currentReturnPct,
-    projectedReturnPct,
     monthlyContribution,
     currentFxRate,
-    projectedFxRate,
-    foreignAllocationPct,
     horizonYears,
-    yearOfSale,
+    returnSeries,
+    foreignSeries,
+    fxSeries,
+    sellSeries,
   } = inputs;
 
-  const r = projectedReturnPct / 100;
-  const foreignFrac = clamp(foreignAllocationPct, 0, 100) / 100;
   const initialCostBasis =
     currentReturnPct > -100
       ? currentPortfolioValue / (1 + currentReturnPct / 100)
@@ -31,10 +29,10 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
   let costBasis = initialCostBasis;
   let lifetimeQuotaUsed = Math.min(initialCostBasis, LIFETIME_NISA_LIMIT);
   let cashOutsideNisa = 0;
-  // Treat existing holdings' cost basis as already contributed; new monthly money is added below.
   let totalContributed = initialCostBasis;
   let peakLifetimeUsage = lifetimeQuotaUsed;
   let restoreNextYear = 0;
+  let previousFx = currentFxRate;
 
   const yearly: YearlyResult[] = [];
   yearly.push({
@@ -50,7 +48,12 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
   });
 
   for (let y = 1; y <= horizonYears; y++) {
-    // 簿価復活 from any sale in the previous year.
+    const idx = y - 1;
+    const r = (returnSeries[idx] ?? 0) / 100;
+    const foreignFrac = clamp((foreignSeries[idx] ?? 0) / 100, 0, 1);
+    const fxEnd = fxSeries[idx] ?? previousFx;
+    const sellFrac = kind === 'sellReinvest' ? clamp((sellSeries[idx] ?? 0) / 100, 0, 1) : 0;
+
     if (restoreNextYear > 0) {
       lifetimeQuotaUsed = Math.max(0, lifetimeQuotaUsed - restoreNextYear);
       restoreNextYear = 0;
@@ -59,21 +62,23 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
     let annualQuotaUsed = 0;
     let contributedThisYear = 0;
 
-    if (kind === 'sellReinvest' && y === yearOfSale && portfolioValue > 0) {
-      cashOutsideNisa += portfolioValue;
-      restoreNextYear = costBasis;
-      portfolioValue = 0;
-      costBasis = 0;
+    if (sellFrac > 0 && portfolioValue > 0) {
+      const soldValue = portfolioValue * sellFrac;
+      const soldBasis = costBasis * sellFrac;
+      cashOutsideNisa += soldValue;
+      restoreNextYear += soldBasis;
+      portfolioValue -= soldValue;
+      costBasis -= soldBasis;
     }
 
-    const remainingThisYear = () =>
+    const remaining = () =>
       Math.max(
         0,
         Math.min(ANNUAL_NISA_LIMIT - annualQuotaUsed, LIFETIME_NISA_LIMIT - lifetimeQuotaUsed),
       );
 
     if (cashOutsideNisa > 0) {
-      const deposit = Math.min(cashOutsideNisa, remainingThisYear());
+      const deposit = Math.min(cashOutsideNisa, remaining());
       if (deposit > 0) {
         cashOutsideNisa -= deposit;
         portfolioValue += deposit;
@@ -85,7 +90,7 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
 
     const monthlyDesired = Math.max(0, monthlyContribution) * 12;
     if (monthlyDesired > 0) {
-      const deposit = Math.min(monthlyDesired, remainingThisYear());
+      const deposit = Math.min(monthlyDesired, remaining());
       if (deposit > 0) {
         portfolioValue += deposit;
         costBasis += deposit;
@@ -98,16 +103,13 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
 
     peakLifetimeUsage = Math.max(peakLifetimeUsage, lifetimeQuotaUsed);
 
-    const fxStart =
-      currentFxRate + (projectedFxRate - currentFxRate) * ((y - 1) / horizonYears);
-    const fxEnd = currentFxRate + (projectedFxRate - currentFxRate) * (y / horizonYears);
-    const fxDrift = fxStart > 0 ? fxEnd / fxStart - 1 : 0;
-
+    const fxDrift = previousFx > 0 ? fxEnd / previousFx - 1 : 0;
     const foreignPart = portfolioValue * foreignFrac;
     const domesticPart = portfolioValue - foreignPart;
-    const foreignGrown = foreignPart * (1 + r) * (1 + fxDrift);
-    const domesticGrown = domesticPart * (1 + r);
-    portfolioValue = foreignGrown + domesticGrown;
+    portfolioValue =
+      foreignPart * (1 + r) * (1 + fxDrift) + domesticPart * (1 + r);
+
+    previousFx = fxEnd;
 
     yearly.push({
       year: y,
@@ -123,16 +125,12 @@ export function simulate(inputs: SimulationInputs, kind: ScenarioKind): Scenario
   }
 
   const last = yearly[yearly.length - 1];
-  const finalPortfolioValue = last.portfolioValue;
-  const finalTotalValue = last.portfolioValue + last.cashOutsideNisa;
-  const totalGain = finalTotalValue - totalContributed;
-
   return {
     yearly,
-    finalPortfolioValue,
-    finalTotalValue,
+    finalPortfolioValue: last.portfolioValue,
+    finalTotalValue: last.portfolioValue + last.cashOutsideNisa,
     totalContributed,
-    totalGain,
+    totalGain: last.portfolioValue + last.cashOutsideNisa - totalContributed,
     peakLifetimeUsage,
   };
 }

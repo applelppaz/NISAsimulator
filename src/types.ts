@@ -1,13 +1,13 @@
 export interface SimulationInputs {
   currentPortfolioValue: number;
   currentReturnPct: number;
-  projectedReturnPct: number;
   monthlyContribution: number;
   currentFxRate: number;
-  projectedFxRate: number;
-  foreignAllocationPct: number;
   horizonYears: number;
-  yearOfSale: number;
+  returnSeries: number[];
+  foreignSeries: number[];
+  fxSeries: number[];
+  sellSeries: number[];
 }
 
 export interface YearlyResult {

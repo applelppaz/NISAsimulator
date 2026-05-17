@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { ANNUAL_NISA_LIMIT, LIFETIME_NISA_LIMIT, SimulationInputs } from '../types';
+import { DrawableSeries } from './DrawableSeries';
 
 interface Props {
   inputs: SimulationInputs;
@@ -19,36 +21,22 @@ export function InputPanel({ inputs, onChange }: Props) {
           label="Current portfolio value"
           unit="JPY"
           value={inputs.currentPortfolioValue}
-          step={10_000}
-          min={0}
           onChange={(v) => set('currentPortfolioValue', v)}
         />
         <NumberField
           label="Current unrealized return"
           unit="%"
           value={inputs.currentReturnPct}
-          step={0.5}
-          min={-99}
           onChange={(v) => set('currentReturnPct', v)}
           hint="Used to back out your cost basis (簿価)."
         />
       </Section>
 
-      <Section title="Future assumptions">
-        <NumberField
-          label="Projected annual return"
-          unit="% / yr"
-          value={inputs.projectedReturnPct}
-          step={0.25}
-          onChange={(v) => set('projectedReturnPct', v)}
-          hint="Underlying market return in local currency; FX applied separately."
-        />
+      <Section title="Contribution">
         <NumberField
           label="Monthly contribution"
           unit="JPY"
           value={inputs.monthlyContribution}
-          step={1_000}
-          min={0}
           onChange={(v) => set('monthlyContribution', v)}
           hint={`Annual cap is ¥${ANNUAL_NISA_LIMIT.toLocaleString()} (¥${monthlyCap.toLocaleString()} / month).`}
           warning={
@@ -59,39 +47,7 @@ export function InputPanel({ inputs, onChange }: Props) {
         />
       </Section>
 
-      <Section title="FX exposure">
-        <NumberField
-          label="Current USD/JPY rate"
-          unit="JPY"
-          value={inputs.currentFxRate}
-          step={0.1}
-          min={0}
-          onChange={(v) => set('currentFxRate', v)}
-        />
-        <NumberField
-          label="Projected USD/JPY at end of horizon"
-          unit="JPY"
-          value={inputs.projectedFxRate}
-          step={0.1}
-          min={0}
-          onChange={(v) => set('projectedFxRate', v)}
-          hint="Linear drift from current rate over the horizon."
-        />
-        <SliderField
-          label="Foreign-asset allocation"
-          unit="%"
-          value={inputs.foreignAllocationPct}
-          min={0}
-          max={100}
-          step={1}
-          onChange={(v) => set('foreignAllocationPct', v)}
-          hint={`${inputs.foreignAllocationPct}% FX-exposed (e.g. オールカントリー / S&P500) • ${
-            100 - inputs.foreignAllocationPct
-          }% domestic JPY.`}
-        />
-      </Section>
-
-      <Section title="Time horizon & sell scenario">
+      <Section title="Time horizon">
         <SliderField
           label="Investment horizon"
           unit="years"
@@ -99,21 +55,73 @@ export function InputPanel({ inputs, onChange }: Props) {
           min={1}
           max={50}
           step={1}
-          onChange={(v) => {
-            const next = { ...inputs, horizonYears: v };
-            if (inputs.yearOfSale > v) next.yearOfSale = v;
-            onChange(next);
-          }}
+          onChange={(v) => set('horizonYears', v)}
         />
-        <SliderField
-          label="Year of sale (Scenario B)"
-          unit={inputs.yearOfSale === 0 ? 'never' : `year ${inputs.yearOfSale}`}
-          value={inputs.yearOfSale}
+      </Section>
+
+      <Section title="Projected annual return (per year)">
+        <DrawableSeries
+          label="Return %"
+          values={inputs.returnSeries}
+          min={-10}
+          max={20}
+          step={0.5}
+          color="#2563eb"
+          unitSuffix="%"
+          formatTick={(v) => `${v}%`}
+          onChange={(v) => set('returnSeries', v)}
+          hint="local-currency return, FX applied separately"
+        />
+      </Section>
+
+      <Section title="Foreign-asset allocation (per year)">
+        <DrawableSeries
+          label="Foreign %"
+          values={inputs.foreignSeries}
           min={0}
-          max={inputs.horizonYears}
+          max={100}
           step={1}
-          onChange={(v) => set('yearOfSale', v)}
-          hint="0 = never sell. After selling, the cost basis (簿価) restores the following year, and reinvestment is capped at ¥3.6M/yr."
+          color="#0891b2"
+          unitSuffix="%"
+          formatTick={(v) => `${v}%`}
+          onChange={(v) => set('foreignSeries', v)}
+          hint="0 = all domestic, 100 = all オールカントリー"
+        />
+      </Section>
+
+      <Section title="USD/JPY exchange rate (per year)">
+        <NumberField
+          label="Current USD/JPY rate"
+          unit="JPY"
+          value={inputs.currentFxRate}
+          onChange={(v) => set('currentFxRate', v)}
+          hint="Baseline for year 0 — the drawable below sets the rate at end of each year."
+        />
+        <DrawableSeries
+          label="USD/JPY at end of year"
+          values={inputs.fxSeries}
+          min={80}
+          max={250}
+          step={1}
+          color="#16a34a"
+          unitSuffix=""
+          formatTick={(v) => v.toFixed(0)}
+          onChange={(v) => set('fxSeries', v)}
+        />
+      </Section>
+
+      <Section title="Sell schedule (Scenario B)">
+        <DrawableSeries
+          label="Sell % of holdings"
+          values={inputs.sellSeries}
+          min={0}
+          max={100}
+          step={1}
+          color="#d97706"
+          unitSuffix="%"
+          formatTick={(v) => `${v}%`}
+          onChange={(v) => set('sellSeries', v)}
+          hint="0% = no sale that year. Cost basis (簿価) restores next year."
         />
       </Section>
 
@@ -143,25 +151,24 @@ interface NumberFieldProps {
   label: string;
   unit: string;
   value: number;
-  step?: number;
-  min?: number;
-  max?: number;
   hint?: string;
   warning?: string;
   onChange: (v: number) => void;
 }
 
-function NumberField({
-  label,
-  unit,
-  value,
-  step,
-  min,
-  max,
-  hint,
-  warning,
-  onChange,
-}: NumberFieldProps) {
+function NumberField({ label, unit, value, hint, warning, onChange }: NumberFieldProps) {
+  const [text, setText] = useState(formatForInput(value));
+
+  useEffect(() => {
+    setText((prev) => {
+      const parsed = Number(prev);
+      if (prev === '' || prev === '-' || !Number.isFinite(parsed) || parsed !== value) {
+        return formatForInput(value);
+      }
+      return prev;
+    });
+  }, [value]);
+
   return (
     <label className="block">
       <div className="flex items-baseline justify-between gap-2 mb-1">
@@ -169,13 +176,22 @@ function NumberField({
         <span className="text-xs text-slate-500">{unit}</span>
       </div>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm tabular-nums"
-        value={Number.isFinite(value) ? value : 0}
-        step={step}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={text}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          if (next === '' || next === '-') return;
+          const n = Number(next);
+          if (Number.isFinite(n)) onChange(n);
+        }}
+        onBlur={() => {
+          const n = Number(text);
+          if (text === '' || !Number.isFinite(n)) setText(formatForInput(value));
+          else setText(formatForInput(n));
+        }}
       />
       {hint && !warning && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
       {warning && <p className="mt-1 text-xs text-amber-600">{warning}</p>}
@@ -215,4 +231,9 @@ function SliderField({ label, unit, value, min, max, step, hint, onChange }: Sli
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
     </label>
   );
+}
+
+function formatForInput(v: number): string {
+  if (!Number.isFinite(v)) return '';
+  return String(v);
 }

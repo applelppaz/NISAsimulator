@@ -17,7 +17,7 @@ interface Props {
   sell: ScenarioResult;
   currency: Currency;
   fxRate: number;
-  yearOfSale: number;
+  sellSeries: number[];
   showSell: boolean;
 }
 
@@ -29,7 +29,11 @@ interface ChartRow {
   sellCash: number;
 }
 
-export function ResultChart({ hold, sell, currency, fxRate, yearOfSale, showSell }: Props) {
+export function ResultChart({ hold, sell, currency, fxRate, sellSeries, showSell }: Props) {
+  const saleYears = sellSeries
+    .map((v, i) => (v > 0 ? { year: i + 1, pct: v } : null))
+    .filter((x): x is { year: number; pct: number } => x !== null);
+
   const data: ChartRow[] = hold.yearly.map((y, i) => {
     const s = sell.yearly[i];
     return {
@@ -107,14 +111,21 @@ export function ResultChart({ hold, sell, currency, fxRate, yearOfSale, showSell
                 dot={false}
               />
             )}
-            {showSell && yearOfSale > 0 && (
-              <ReferenceLine
-                x={yearOfSale}
-                stroke="#d97706"
-                strokeDasharray="2 4"
-                label={{ value: 'Sale', fontSize: 11, fill: '#d97706', position: 'top' }}
-              />
-            )}
+            {showSell &&
+              saleYears.map((s) => (
+                <ReferenceLine
+                  key={s.year}
+                  x={s.year}
+                  stroke="#d97706"
+                  strokeDasharray="2 4"
+                  label={{
+                    value: `${Math.round(s.pct)}%`,
+                    fontSize: 10,
+                    fill: '#d97706',
+                    position: 'top',
+                  }}
+                />
+              ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
