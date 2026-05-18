@@ -12,6 +12,8 @@ import {
 import { ScenarioResult } from '../types';
 import { Currency, formatCurrency } from '../lib/format';
 
+export type ChartMetric = 'value' | 'gain';
+
 interface Props {
   hold: ScenarioResult;
   sell: ScenarioResult;
@@ -19,28 +21,46 @@ interface Props {
   fxRate: number;
   sellSeries: number[];
   showSell: boolean;
+  metrics: ChartMetric[];
+  onMetricsChange: (next: ChartMetric[]) => void;
 }
 
 interface ChartRow {
   year: number;
-  hold: number;
-  sellTotal: number;
-  sellInNisa: number;
+  holdValue: number;
+  holdGain: number;
+  sellValue: number;
+  sellGain: number;
   sellCash: number;
 }
 
-export function ResultChart({ hold, sell, currency, fxRate, sellSeries, showSell }: Props) {
+export function ResultChart({
+  hold,
+  sell,
+  currency,
+  fxRate,
+  sellSeries,
+  showSell,
+  metrics,
+  onMetricsChange,
+}: Props) {
+  const showValue = metrics.includes('value');
+  const showGain = metrics.includes('gain');
+
   const saleYears = sellSeries
     .map((v, i) => (v > 0 ? { year: i + 1, pct: v } : null))
     .filter((x): x is { year: number; pct: number } => x !== null);
 
   const data: ChartRow[] = hold.yearly.map((y, i) => {
     const s = sell.yearly[i];
+    const holdTotal = y.portfolioValue;
+    const sellTotal = s.portfolioValue + s.cashOutsideNisa;
     return {
       year: y.year,
-      hold: toDisplay(y.portfolioValue, currency, fxRate),
-      sellTotal: toDisplay(s.portfolioValue + s.cashOutsideNisa, currency, fxRate),
-      sellInNisa: toDisplay(s.portfolioValue, currency, fxRate),
+      holdValue: toDisplay(holdTotal, currency, fxRate),
+      holdGain: toDisplay(holdTotal - y.totalContributed, currency, fxRate),
+      sellValue: toDisplay(sellTotal, currency, fxRate),
+      sellGain: toDisplay(sellTotal - s.totalContributed, currency, fxRate),
       sellCash: toDisplay(s.cashOutsideNisa, currency, fxRate),
     };
   });
@@ -53,11 +73,42 @@ export function ResultChart({ hold, sell, currency, fxRate, sellSeries, showSell
     return `${currency === 'JPY' ? '¥' : '$'}${formatted}`;
   };
 
+  function toggle(metric: ChartMetric) {
+    const has = metrics.includes(metric);
+    if (has && metrics.length > 1) onMetricsChange(metrics.filter((m) => m !== metric));
+    else if (!has) onMetricsChange([...metrics, metric]);
+  }
+
+  const titleParts: string[] = [];
+  if (showValue) titleParts.push('value');
+  if (showGain) titleParts.push('gain');
+
   return (
     <div className="bg-white rounded-md p-4 shadow-sm">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
-        Portfolio value over time
-      </h3>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Portfolio {titleParts.join(' & ')} over time
+        </h3>
+        <div className="inline-flex rounded border border-slate-300 overflow-hidden text-xs">
+          {(['value', 'gain'] as const).map((m) => {
+            const active = metrics.includes(m);
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => toggle(m)}
+                className={`px-2 py-1 ${
+                  active
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {m === 'value' ? 'Value' : 'Gain'}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 5, right: 20, bottom: 0, left: 0 }}>
@@ -85,23 +136,45 @@ export function ResultChart({ hold, sell, currency, fxRate, sellSeries, showSell
               formatter={(name) => labelFor(name as string)}
               wrapperStyle={{ fontSize: 12 }}
             />
-            <Line
-              type="monotone"
-              dataKey="hold"
-              stroke="#2563eb"
-              strokeWidth={2.5}
-              dot={false}
-            />
-            {showSell && (
+            {showValue && (
               <Line
                 type="monotone"
-                dataKey="sellTotal"
+                dataKey="holdValue"
+                stroke="#2563eb"
+                strokeWidth={2.5}
+                dot={false}
+              />
+            )}
+            {showGain && (
+              <Line
+                type="monotone"
+                dataKey="holdGain"
+                stroke="#2563eb"
+                strokeWidth={1.8}
+                strokeDasharray="6 3"
+                dot={false}
+              />
+            )}
+            {showSell && showValue && (
+              <Line
+                type="monotone"
+                dataKey="sellValue"
                 stroke="#d97706"
                 strokeWidth={2.5}
                 dot={false}
               />
             )}
-            {showSell && (
+            {showSell && showGain && (
+              <Line
+                type="monotone"
+                dataKey="sellGain"
+                stroke="#d97706"
+                strokeWidth={1.8}
+                strokeDasharray="6 3"
+                dot={false}
+              />
+            )}
+            {showSell && showValue && (
               <Line
                 type="monotone"
                 dataKey="sellCash"
@@ -135,12 +208,14 @@ export function ResultChart({ hold, sell, currency, fxRate, sellSeries, showSell
 
 function labelFor(key: string): string {
   switch (key) {
-    case 'hold':
-      return 'A: Hold & Continue';
-    case 'sellTotal':
-      return 'B: Sell & Reinvest (total)';
-    case 'sellInNisa':
-      return 'B: In NISA';
+    case 'holdValue':
+      return 'A: Value';
+    case 'holdGain':
+      return 'A: Gain';
+    case 'sellValue':
+      return 'B: Value (total)';
+    case 'sellGain':
+      return 'B: Gain';
     case 'sellCash':
       return 'B: Cash awaiting reinvestment';
     default:

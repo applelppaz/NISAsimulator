@@ -5,7 +5,7 @@ import { loadInputs, saveInputs } from './lib/storage';
 import { Currency } from './lib/format';
 import { InputPanel } from './components/InputPanel';
 import { SummaryCards } from './components/SummaryCards';
-import { ResultChart } from './components/ResultChart';
+import { ChartMetric, ResultChart } from './components/ResultChart';
 import { QuotaBar } from './components/QuotaBar';
 import { ResultTable } from './components/ResultTable';
 
@@ -71,6 +71,7 @@ function numOrDefault(v: unknown, fallback: number): number {
 export default function App() {
   const [inputs, setInputsRaw] = useState<SimulationInputs>(() => mergeInputs(loadInputs()));
   const [currency, setCurrency] = useState<Currency>('JPY');
+  const [chartMetrics, setChartMetrics] = useState<ChartMetric[]>(['value']);
 
   const setInputs = (next: SimulationInputs) => {
     if (next.horizonYears !== inputs.horizonYears) {
@@ -138,6 +139,8 @@ export default function App() {
             fxRate={inputs.currentFxRate}
             sellSeries={inputs.sellSeries}
             showSell={showSell}
+            metrics={chartMetrics}
+            onMetricsChange={setChartMetrics}
           />
           <QuotaBar hold={hold} sell={sell} showSell={showSell} />
           <ResultTable
