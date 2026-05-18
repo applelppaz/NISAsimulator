@@ -31,13 +31,15 @@ export function DrawableSeries({
   formatValue,
   formatTick,
   onChange,
-  height = 110,
+  height = 130,
   hint,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draggingRef = useRef(false);
   const lastIndexRef = useRef<number | null>(null);
   const lastValueRef = useRef<number | null>(null);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
   const [hover, setHover] = useState<{ index: number; value: number } | null>(null);
   const [flatInput, setFlatInput] = useState('');
 
@@ -65,18 +67,24 @@ export function DrawableSeries({
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
     const x = ((clientX - rect.left) / rect.width) * width;
     const y = ((clientY - rect.top) / rect.height) * height;
 
     const index = xToIndex(x);
     const value = yToValue(y);
 
-    const next = [...values];
+    const next = [...valuesRef.current];
     next[index] = value;
 
     const lastIdx = lastIndexRef.current;
     const lastVal = lastValueRef.current;
-    if (lastIdx !== null && lastVal !== null && Math.abs(index - lastIdx) > 1) {
+    if (
+      lastIdx !== null &&
+      lastVal !== null &&
+      Math.abs(index - lastIdx) > 1 &&
+      index !== lastIdx
+    ) {
       const lo = Math.min(lastIdx, index);
       const hi = Math.max(lastIdx, index);
       for (let i = lo; i <= hi; i++) {
@@ -87,28 +95,36 @@ export function DrawableSeries({
 
     lastIndexRef.current = index;
     lastValueRef.current = value;
+    valuesRef.current = next;
     setHover({ index, value });
     onChange(next);
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     draggingRef.current = true;
     lastIndexRef.current = null;
     lastValueRef.current = null;
     applyDraw(e.clientX, e.clientY);
-    e.preventDefault();
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (draggingRef.current) {
-      applyDraw(e.clientX, e.clientY);
-      e.preventDefault();
-    }
+    if (!draggingRef.current) return;
+    applyDraw(e.clientX, e.clientY);
   }
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (!draggingRef.current) return;
     draggingRef.current = false;
     lastIndexRef.current = null;
     lastValueRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
   }
 
   function applyFlat() {
@@ -143,70 +159,73 @@ export function DrawableSeries({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full block bg-slate-50 rounded border border-slate-200 select-none"
-        style={{ touchAction: 'none' }}
+        preserveAspectRatio="none"
+        className="w-full block bg-slate-50 rounded border border-slate-200 select-none cursor-crosshair"
+        style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerUp}
       >
-        {yTicks.map((tv) => (
-          <g key={`y${tv}`}>
-            <line
-              x1={PAD_LEFT}
-              x2={PAD_LEFT + chartW}
-              y1={valueToY(tv)}
-              y2={valueToY(tv)}
-              stroke="#e2e8f0"
-              strokeDasharray="2 3"
+        <rect x={0} y={0} width={width} height={height} fill="transparent" />
+        <g style={{ pointerEvents: 'none' }}>
+          {yTicks.map((tv) => (
+            <g key={`y${tv}`}>
+              <line
+                x1={PAD_LEFT}
+                x2={PAD_LEFT + chartW}
+                y1={valueToY(tv)}
+                y2={valueToY(tv)}
+                stroke="#e2e8f0"
+                strokeDasharray="2 3"
+              />
+              <text
+                x={PAD_LEFT - 4}
+                y={valueToY(tv) + 3}
+                textAnchor="end"
+                fontSize="9"
+                fill="#94a3b8"
+              >
+                {tickFmt(tv)}
+              </text>
+            </g>
+          ))}
+          {Array.from({ length: n }, (_, i) =>
+            i % xTickStride === 0 || i === n - 1 ? (
+              <text
+                key={`x${i}`}
+                x={PAD_LEFT + i * stepX}
+                y={height - 4}
+                textAnchor="middle"
+                fontSize="9"
+                fill="#94a3b8"
+              >
+                Y{i + 1}
+              </text>
+            ) : null,
+          )}
+          <polygon points={areaPoints} fill={color} fillOpacity="0.12" />
+          <polyline points={polylinePoints} fill="none" stroke={color} strokeWidth="1.8" />
+          {values.map((v, i) => (
+            <circle
+              key={`p${i}`}
+              cx={PAD_LEFT + i * stepX}
+              cy={valueToY(v)}
+              r={hover?.index === i ? 3.4 : 2}
+              fill={color}
             />
-            <text
-              x={PAD_LEFT - 4}
-              y={valueToY(tv) + 3}
-              textAnchor="end"
-              fontSize="9"
-              fill="#94a3b8"
-            >
-              {tickFmt(tv)}
-            </text>
-          </g>
-        ))}
-        {Array.from({ length: n }, (_, i) =>
-          i % xTickStride === 0 || i === n - 1 ? (
-            <text
-              key={`x${i}`}
-              x={PAD_LEFT + i * stepX}
-              y={height - 4}
-              textAnchor="middle"
-              fontSize="9"
-              fill="#94a3b8"
-            >
-              Y{i + 1}
-            </text>
-          ) : null,
-        )}
-        <polygon points={areaPoints} fill={color} fillOpacity="0.12" />
-        <polyline points={polylinePoints} fill="none" stroke={color} strokeWidth="1.8" />
-        {values.map((v, i) => (
-          <circle
-            key={`p${i}`}
-            cx={PAD_LEFT + i * stepX}
-            cy={valueToY(v)}
-            r={hover?.index === i ? 3.2 : 2}
-            fill={color}
-          />
-        ))}
-        {hover && (
-          <line
-            x1={PAD_LEFT + hover.index * stepX}
-            x2={PAD_LEFT + hover.index * stepX}
-            y1={PAD_TOP}
-            y2={PAD_TOP + chartH}
-            stroke={color}
-            strokeOpacity="0.3"
-          />
-        )}
+          ))}
+          {hover && (
+            <line
+              x1={PAD_LEFT + hover.index * stepX}
+              x2={PAD_LEFT + hover.index * stepX}
+              y1={PAD_TOP}
+              y2={PAD_TOP + chartH}
+              stroke={color}
+              strokeOpacity="0.3"
+            />
+          )}
+        </g>
       </svg>
       <div className="flex items-center gap-2 text-xs">
         <span className="text-slate-500">Flat:</span>
