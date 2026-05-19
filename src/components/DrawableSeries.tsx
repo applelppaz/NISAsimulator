@@ -42,6 +42,7 @@ export function DrawableSeries({
   valuesRef.current = values;
   const [hover, setHover] = useState<{ index: number; value: number } | null>(null);
   const [flatInput, setFlatInput] = useState('');
+  const [editMode, setEditMode] = useState(false);
 
   const n = values.length;
   const fmt = formatValue ?? ((v: number) => `${v.toFixed(step < 1 ? 1 : 0)}${unitSuffix}`);
@@ -101,6 +102,7 @@ export function DrawableSeries({
   }
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    if (!editMode) return;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -112,7 +114,7 @@ export function DrawableSeries({
     applyDraw(e.clientX, e.clientY);
   }
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!draggingRef.current) return;
+    if (!editMode || !draggingRef.current) return;
     applyDraw(e.clientX, e.clientY);
   }
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
@@ -146,22 +148,44 @@ export function DrawableSeries({
 
   return (
     <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="text-sm font-medium text-slate-700">{label}</span>
-        {hover ? (
-          <span className="text-xs text-slate-600 tabular-nums">
-            Y{hover.index + 1}: {fmt(hover.value)}
-          </span>
-        ) : (
-          <span className="text-xs text-slate-400">drag to draw →</span>
-        )}
+        <div className="flex items-center gap-2">
+          {editMode && hover && (
+            <span className="text-xs text-brand-700 tabular-nums">
+              Y{hover.index + 1}: {fmt(hover.value)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setEditMode((v) => !v);
+              setHover(null);
+            }}
+            className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+              editMode
+                ? 'bg-brand-600 text-white border-brand-600'
+                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            {editMode ? 'Done' : 'Edit'}
+          </button>
+        </div>
       </div>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
-        className="w-full block bg-slate-50 rounded border border-slate-200 select-none cursor-crosshair"
-        style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+        className={`w-full block rounded border-2 select-none ${
+          editMode
+            ? 'bg-brand-50 border-brand-500 cursor-crosshair'
+            : 'bg-slate-50 border-slate-200'
+        }`}
+        style={{
+          touchAction: editMode ? 'none' : 'pan-y',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
