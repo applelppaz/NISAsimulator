@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   label: string;
@@ -40,9 +40,13 @@ export function DrawableSeries({
   const lastValueRef = useRef<number | null>(null);
   const valuesRef = useRef(values);
   valuesRef.current = values;
+  const editModeRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [hover, setHover] = useState<{ index: number; value: number } | null>(null);
   const [flatInput, setFlatInput] = useState('');
   const [editMode, setEditMode] = useState(false);
+  editModeRef.current = editMode;
 
   const n = values.length;
   const fmt = formatValue ?? ((v: number) => `${v.toFixed(step < 1 ? 1 : 0)}${unitSuffix}`);
@@ -54,15 +58,6 @@ export function DrawableSeries({
   const stepX = n > 1 ? chartW / (n - 1) : chartW;
 
   const valueToY = (v: number) => PAD_TOP + chartH - ((v - min) / (max - min)) * chartH;
-  const xToIndex = (x: number) => {
-    const rel = (x - PAD_LEFT) / Math.max(stepX, 1);
-    return clamp(Math.round(rel), 0, n - 1);
-  };
-  const yToValue = (y: number) => {
-    const rel = (PAD_TOP + chartH - y) / chartH;
-    const raw = min + rel * (max - min);
-    return clamp(round(raw, step), min, max);
-  };
 
   function applyDraw(clientX: number, clientY: number) {
     const svg = svgRef.current;
@@ -72,8 +67,11 @@ export function DrawableSeries({
     const x = ((clientX - rect.left) / rect.width) * width;
     const y = ((clientY - rect.top) / rect.height) * height;
 
-    const index = xToIndex(x);
-    const value = yToValue(y);
+    const relX = (x - PAD_LEFT) / Math.max(stepX, 1);
+    const index = clamp(Math.round(relX), 0, n - 1);
+    const relY = (PAD_TOP + chartH - y) / chartH;
+    const rawV = min + relY * (max - min);
+    const value = clamp(round(rawV, step), min, max);
 
     const next = [...valuesRef.current];
     next[index] = value;
@@ -98,36 +96,77 @@ export function DrawableSeries({
     lastValueRef.current = value;
     valuesRef.current = next;
     setHover({ index, value });
-    onChange(next);
+    onChangeRef.current(next);
   }
 
-  function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    if (!editMode) return;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    function start(clientX: number, clientY: number) {
+      draggingRef.current = true;
+      lastIndexRef.current = null;
+      lastValueRef.current = null;
+      applyDraw(clientX, clientY);
     }
-    draggingRef.current = true;
-    lastIndexRef.current = null;
-    lastValueRef.current = null;
-    applyDraw(e.clientX, e.clientY);
-  }
-  function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!editMode || !draggingRef.current) return;
-    applyDraw(e.clientX, e.clientY);
-  }
-  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    lastIndexRef.current = null;
-    lastValueRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
+    function move(clientX: number, clientY: number) {
+      if (!draggingRef.current) return;
+      applyDraw(clientX, clientY);
     }
-  }
+    function end() {
+      draggingRef.current = false;
+      lastIndexRef.current = null;
+      lastValueRef.current = null;
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (!editModeRef.current) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      start(t.clientX, t.clientY);
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (!editModeRef.current || !draggingRef.current) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      move(t.clientX, t.clientY);
+    }
+    function onTouchEnd(e: TouchEvent) {
+      if (!editModeRef.current) return;
+      e.preventDefault();
+      end();
+    }
+    function onMouseDown(e: MouseEvent) {
+      if (!editModeRef.current) return;
+      e.preventDefault();
+      start(e.clientX, e.clientY);
+      const onMove = (ev: MouseEvent) => move(ev.clientX, ev.clientY);
+      const onUp = () => {
+        end();
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+
+    svg.addEventListener('touchstart', onTouchStart, { passive: false });
+    svg.addEventListener('touchmove', onTouchMove, { passive: false });
+    svg.addEventListener('touchend', onTouchEnd, { passive: false });
+    svg.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    svg.addEventListener('mousedown', onMouseDown);
+
+    return () => {
+      svg.removeEventListener('touchstart', onTouchStart);
+      svg.removeEventListener('touchmove', onTouchMove);
+      svg.removeEventListener('touchend', onTouchEnd);
+      svg.removeEventListener('touchcancel', onTouchEnd);
+      svg.removeEventListener('mousedown', onMouseDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [n, min, max, step]);
 
   function applyFlat() {
     const v = Number(flatInput);
@@ -161,6 +200,7 @@ export function DrawableSeries({
             onClick={() => {
               setEditMode((v) => !v);
               setHover(null);
+              draggingRef.current = false;
             }}
             className={`text-xs px-2 py-0.5 rounded border transition-colors ${
               editMode
@@ -186,12 +226,8 @@ export function DrawableSeries({
           WebkitUserSelect: 'none',
           userSelect: 'none',
         }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
       >
-        <rect x={0} y={0} width={width} height={height} fill="transparent" />
+        <rect x={0} y={0} width={width} height={height} fill="transparent" pointerEvents="all" />
         <g style={{ pointerEvents: 'none' }}>
           {yTicks.map((tv) => (
             <g key={`y${tv}`}>
